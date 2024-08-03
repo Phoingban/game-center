@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>not.Snake</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #2c2c2c;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        #controls, #game-info, #scoreboard {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #0e8882;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1e5350;
+            scale: 1.1;
+        }
+        canvas {
+            border: 2px solid #333;
+            border-radius: 5px;
+            color: #3a3a3a;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #0c726d;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #0e8882;
+        }
+    </style>
+</head>
+<body>
+    <h1>not.Snake</h1>
+    
+    <div id="controls">
+        <button onclick="setDifficulty('easy')">Easy</button>
+        <button onclick="setDifficulty('medium')">Medium</button>
+        <button onclick="setDifficulty('hard')">Hard</button>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="game-info">
+        <p id="score">Score: 0</p>
+        <p id="timer">Time: 0s</p>
+    </div>
+    
+    <button id="restartButton" onclick="restartGame()">Restart</button>
+    
+    <div id="save-score" style="display: none;">
+        <input type="text" id="playerName" placeholder="Enter your name">
+        <button onclick="saveScore()">Save Score</button>
+    </div>
+    
+    <div id="scoreboard">
+        <h2>High Scores</h2>
+        <table id="scoreTable">
+            <tr>
+                <th>Name</th>
+                <th>Score</th>
+                <th>Time</th>
+            </tr>
+        </table>
+    </div>
+    
+    <button onclick="clearScores()">Clear Scores</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const timerDisplay = document.getElementById('timer');
+        const restartButton = document.getElementById('restartButton');
+
+        let gridSize, tileCount, snake, food, dx, dy, score, gameSpeed, gameLoop;
+        let gameRunning = false;
+        let startTime, elapsedTime;
+
+        const difficulties = {
+            easy: { speed: 150, size: 400, startLength: 3 },
+            medium: { speed: 100, size: 320, startLength: 5 },
+            hard: { speed: 70, size: 280, startLength: 7 }
+        };
+
+        let currentDifficulty = 'easy';
+
+        function setDifficulty(level) {
+            currentDifficulty = level;
+            const config = difficulties[level];
+            canvas.width = config.size;
+            canvas.height = config.size;
+            gridSize = 20;
+            tileCount = canvas.width / gridSize;
+            gameSpeed = config.speed;
+
+            initializeGame();
+            drawGame();
+        }
+
+        function initializeGame() {
+            const config = difficulties[currentDifficulty];
+            snake = [];
+            for (let i = 0; i < config.startLength; i++) {
+                snake.push({x: 10 - i, y: 10});
+            }
+
+            generateFood();
+            dx = 1;
+            dy = 0;
+            score = 0;
+            gameRunning = false;
+            startTime = null;
+            elapsedTime = 0;
+            updateScore();
+            updateTimer();
+        }
+
+        function startGame() {
+            if (!gameRunning) {
+                gameRunning = true;
+                startTime = Date.now() - elapsedTime;
+                drawGame();
+            }
+        }
+
+        function restartGame() {
+            if (gameLoop) clearTimeout(gameLoop);
+            initializeGame();
+            drawGame();
+            document.getElementById('save-score').style.display = 'none';
+        }
+
+        document.addEventListener('keydown', handleKeyPress);
+
+        function handleKeyPress(event) {
+            const key = event.keyCode;
+            const LEFT_KEY = 37;
+            const RIGHT_KEY = 39;
+            const UP_KEY = 38;
+            const DOWN_KEY = 40;
+
+            if (!gameRunning && (key === LEFT_KEY || key === RIGHT_KEY || key === UP_KEY || key === DOWN_KEY)) {
+                startGame();
+            }
+
+            if (gameRunning) {
+                const goingUp = dy === -1;
+                const goingDown = dy === 1;
+                const goingRight = dx === 1;
+                const goingLeft = dx === -1;
+
+                if (key === LEFT_KEY && !goingRight) {
+                    dx = -1;
+                    dy = 0;
+                } else if (key === UP_KEY && !goingDown) {
+                    dx = 0;
+                    dy = -1;
+                } else if (key === RIGHT_KEY && !goingLeft) {
+                    dx = 1;
+                    dy = 0;
+                } else if (key === DOWN_KEY && !goingUp) {
+                    dx = 0;
+                    dy = 1;
+                }
+            }
+        }
+
+        function drawGame() {
+            clearCanvas();
+            if (gameRunning) {
+                moveSnake();
+                updateTimer();
+            }
+            drawSnake();
+            drawFood();
+
+            if (gameOver()) {
+                gameRunning = false;
+                document.getElementById('save-score').style.display = 'block';
+                return;
+            }
+
+            if (gameRunning) {
+                gameLoop = setTimeout(drawGame, gameSpeed);
+            }
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawSnake() {
+            ctx.fillStyle = 'green';
+            snake.forEach(segment => {
+                ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 2, gridSize - 2);
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize - 2, gridSize - 2);
+        }
+
+        function updateScore() {
+            scoreDisplay.textContent = `Score: ${score}`;
+        }
+
+        function updateTimer() {
+            if (gameRunning) {
+                elapsedTime = Date.now() - startTime;
+            }
+            timerDisplay.textContent = `Time: ${Math.floor(elapsedTime / 1000)}s`;
+        }
+
+        function moveSnake() {
+            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                updateScore();
+                generateFood();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function generateFood() {
+            food = {
+                x: Math.floor(Math.random() * tileCount),
+                y: Math.floor(Math.random() * tileCount)
+            };
+            while (snake.some(segment => segment.x === food.x && segment.y === food.y)) {
+                food = {
+                    x: Math.floor(Math.random() * tileCount),
+                    y: Math.floor(Math.random() * tileCount)
+                };
+            }
+        }
+
+        function gameOver() {
+            for (let i = 4; i < snake.length; i++) {
+                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) return true;
+            }
+            const hitLeftWall = snake[0].x < 0;
+            const hitRightWall = snake[0].x > tileCount - 1;
+            const hitTopWall = snake[0].y < 0;
+            const hitBottomWall = snake[0].y > tileCount - 1;
+
+            return hitLeftWall || hitRightWall || hitTopWall || hitBottomWall;
+        }
+
+        function saveScore() {
+            const name = document.getElementById('playerName').value;
+            const finalScore = score;
+            const finalTime = Math.floor(elapsedTime / 1000);
+            
+            const scores = JSON.parse(localStorage.getItem('snakeScores')) || [];
+            scores.push({ name, score: finalScore, time: finalTime });
+            localStorage.setItem('snakeScores', JSON.stringify(scores));
+            
+            updateScoreboard();
+            document.getElementById('save-score').style.display = 'none';
+        }
+
+        function updateScoreboard() {
+            const scores = JSON.parse(localStorage.getItem('snakeScores')) || [];
+            const table = document.getElementById('scoreTable');
+            
+            // Clear existing rows
+            while (table.rows.length > 1) {
+                table.deleteRow(1);
+            }
+            
+            // Add new rows
+            scores.forEach(score => {
+                const row = table.insertRow(-1);
+                row.insertCell(0).textContent = score.name;
+                row.insertCell(1).textContent = score.score;
+                row.insertCell(2).textContent = score.time + 's';
+            });
+        }
+
+        function clearScores() {
+            localStorage.removeItem('snakeScores');
+            updateScoreboard();
+        }
+
+        document.addEventListener('keydown', event => {
+    if (event.keyCode >= 37 && event.keyCode <= 40) {
+        event.preventDefault(); // Prevent scrolling
+    }
+    
+    if (!gameStarted && (event.keyCode >= 37 && event.keyCode <= 40)) {
+        restartGame();
+    } else if (gameStarted) {
+        switch (event.keyCode) {
+            case 37: moveLeft(); break;
+            case 39: moveRight(); break;
+            case 40: moveDown(); break;
+            case 38: rotate(); break;
+        }
+    }
+});
+
+        // Initialize the game and scoreboard
+        setDifficulty('easy');
+        updateScoreboard();
+    </script>
+</body>
+</html>
